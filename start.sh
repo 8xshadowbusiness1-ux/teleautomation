@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-echo "🚀 Launching Telegram Controller Bot on Render..."
+echo "🚀 Starting Telegram Controller Bot on Render (Web Service mode)..."
 set -e
 
-# install all dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# export your bot token (set your token in Render environment variables for safety)
+# Export bot token (Render env var)
 export BOT_TOKEN="${BOT_TOKEN}"
 
-# (optional) create logs folder
+# Create logs folder
 mkdir -p logs
 
-# run the bot with restart loop
-while true; do
-  echo "▶️ Starting Controller Bot at $(date)"
-  python3 controller_bot.py >> logs/controller_bot.log 2>&1
-  echo "⚠️ Bot crashed or stopped — restarting in 5 seconds..."
-  sleep 5
-done
+# Start a dummy web server to keep Render happy (port listener)
+echo "▶️ Starting dummy web listener for Render health checks..."
+python3 -m http.server 8080 >/dev/null 2>&1 &
+
+# Wait a bit then start Telegram bot
+sleep 2
+echo "▶️ Starting Telegram bot..."
+python3 controller_bot.py >> logs/controller_bot.log 2>&1
