@@ -1,19 +1,21 @@
-import asyncio, json
+import asyncio, json, os
 from telethon import TelegramClient
 from pathlib import Path
 
 CONFIG_PATH = Path("config.json")
 
 def load_cfg():
+    if not CONFIG_PATH.exists():
+        CONFIG_PATH.write_text(json.dumps({"workers": {}, "otp_codes": {}, "otp_passwords": {}}, indent=2))
     return json.loads(CONFIG_PATH.read_text())
 
 async def login_worker(name):
-    print(f"[{name}] 🟢 Worker started...")
+    print(f"[{name}] 🟢 Worker started, waiting for OTP or password...")
     while True:
         cfg = load_cfg()
         worker = cfg["workers"].get(name)
         if not worker:
-            print(f"[{name}] ❌ Worker not found, waiting...")
+            print(f"[{name}] ⚠️ Worker '{name}' not found in config.json")
             await asyncio.sleep(5)
             continue
 
@@ -22,22 +24,24 @@ async def login_worker(name):
         phone = worker.get("phone")
 
         if not api_id or not api_hash or not phone:
-            print(f"[{name}] ⚠️ Missing credentials! api_id/api_hash/phone required.")
+            print(f"[{name}] ⚠️ Missing credentials (api_id/api_hash/phone)")
             await asyncio.sleep(5)
             continue
 
-        client = TelegramClient(worker["session_name"], int(api_id), api_hash)
+        api_id = int(api_id)
+        session_name = worker.get("session_name", f"{name}_session")
+        client = TelegramClient(session_name, api_id, api_hash)
         await client.connect()
 
         if not await client.is_user_authorized():
-            print(f"[{name}] 📩 Sending OTP request to {phone}...")
             try:
+                print(f"[{name}] 📩 Sending OTP request to {phone} ...")
                 await client.send_code_request(phone)
-                print(f"[{name}] ✅ OTP sent successfully! Submit via /submitotp {name} <code>")
+                print(f"[{name}] ✅ OTP sent successfully! Enter it using /submitotp {name} <otp>")
             except Exception as e:
-                print(f"[{name}] ⚠️ Error sending OTP: {e}")
+                print(f"[{name}] ❌ Failed to send OTP: {e}")
 
-        # OTP already submitted?
+        # check if OTP entered
         otp_code = cfg.get("otp_codes", {}).get(name)
         if otp_code:
             try:
@@ -47,7 +51,7 @@ async def login_worker(name):
                 break
             except Exception as e:
                 if "SESSION_PASSWORD_NEEDED" in str(e):
-                    print(f"[{name}] 🔐 2FA password required...")
+                    print(f"[{name}] 🔐 2FA password needed!")
                 else:
                     print(f"[{name}] ⚠️ OTP login failed: {e}")
 
@@ -58,7 +62,7 @@ async def login_worker(name):
                 print(f"[{name}] ✅ 2FA login successful!")
                 break
             except Exception as e:
-                print(f"[{name}] ❌ Wrong password or error: {e}")
+                print(f"[{name}] ❌ Wrong password: {e}")
 
         await asyncio.sleep(5)
 
