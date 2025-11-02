@@ -15,7 +15,7 @@ CONFIG_FILE = "bot_config.json"
 config = {
     "api_id": 20339511,  # Apna API ID
     "api_hash": "400346de83fffd1ef3da5bbaab999d4c",  # Apna API hash
-    "phone": "+91XXXXXXXXXX",
+    "phone": "+919158759397",
     "session_name": "main_worker",
     "source_groups": [],
     "target_groups": [],
