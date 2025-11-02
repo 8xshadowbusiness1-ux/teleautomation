@@ -6,18 +6,21 @@ pip install -r requirements.txt
 export BOT_TOKEN="${BOT_TOKEN}"
 mkdir -p logs
 
-# dummy web listener (Render needs open port)
+# ensure config.json exists and writable
+if [ ! -f config.json ]; then
+  echo '{"workers": {}, "managers": {}, "pending_otp": {}, "otp_codes": {}, "otp_status": {}}' > config.json
+fi
+chmod 666 config.json
+
+# dummy web server for Render
 python3 -m http.server ${PORT:-8080} >/dev/null 2>&1 &
 
-# controller bot
-echo "▶️ Controller starting..."
+# start controller
 nohup python3 controller_bot.py > logs/controller_bot.log 2>&1 &
 
-sleep 5
+sleep 4
 
-# worker (example: new)
-echo "▶️ Worker 'new' starting..."
-python3 worker_adder.py new > logs/worker_new.log 2>&1 || true
+# start worker monitor (dynamic launcher)
+nohup python3 worker_launcher.py > logs/worker_launcher.log 2>&1 &
 
-# tail both logs so you can see worker output
-tail -f logs/controller_bot.log logs/worker_new.log
+tail -f logs/controller_bot.log logs/worker_launcher.log
