@@ -1,13 +1,12 @@
 {
-  "is_adding": true,
-  "logged_in": true,
-  "source_groups": ["@tutorial_group"],
-  "target_groups": ["@project_group"],
+  "is_adding": false,
+  "logged_in": false,
+  "source_groups": ["-1003192094585"],
+  "target_groups": ["-1003219996695"],
   "delay_min": 10,
   "delay_max": 20,
   "session_name": "worker_main",
-  "api_id": 20339511,
-  "api_hash": "400346de83fffd1ef3da5bbaab999d4c",
-  "phone": "+917671914528",
-  "notes": "Main worker for automation"
+  "api_id": 123456, 
+  "api_hash": "your_api_hash",
+  "phone": "+917671914528"
 }
