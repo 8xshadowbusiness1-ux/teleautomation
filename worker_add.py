@@ -19,8 +19,7 @@ async def add_loop():
         return
 
     session_name = cfg.get("session_name", "worker_main")
-    # ✅ Same session file path used by both Controller & Worker
-    session_path = f"{session_name}.session"
+    session_path = f"{session_name}.session"  # same as controller
 
     client = TelegramClient(session_path, cfg["api_id"], cfg["api_hash"])
 
@@ -35,7 +34,7 @@ async def add_loop():
         logger.error("❌ Could not connect after 3 retries.")
         return
 
-    # ✅ Ensure logged in
+    # ✅ Check login
     if not await client.is_user_authorized():
         phone = cfg.get("phone")
         if not phone:
@@ -51,12 +50,10 @@ async def add_loop():
             logger.error(f"❌ OTP send failed: {e}")
             return
 
-        # Recheck after OTP entry
         if not await client.is_user_authorized():
             logger.error("❌ Worker still not logged in! Run /login + /otp again.")
             return
 
-    # ✅ Finalize session save
     await client.start()
     logger.info("🟢 Worker fully logged in and active!")
 
@@ -72,7 +69,10 @@ async def add_loop():
                 continue
 
             for src in sources:
-                async for user in client.get_participants(src, aggressive=True):
+                # ✅ FIXED: Properly await coroutine result
+                participants = await client.get_participants(src, aggressive=True)
+
+                for user in participants:
                     for tgt in targets:
                         try:
                             await client(functions.channels.InviteToChannelRequest(
