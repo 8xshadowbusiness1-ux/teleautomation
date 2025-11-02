@@ -1,0 +1,31 @@
+{
+  "managers": {
+    "YOUR_MANAGER_TELEGRAM_ID": {
+      "workers": ["worker1", "worker2"],
+      "delay_min_minutes": 10,
+      "delay_max_minutes": 15,
+      "source": "@tutorial_group",
+      "target": "@project_group",
+      "active": false
+    }
+  },
+  "workers": {
+    "worker1": {
+      "session_name": "worker1_session",
+      "api_id": null,
+      "api_hash": null,
+      "phone": null,
+      "notes": ""
+    },
+    "worker2": {
+      "session_name": "worker2_session",
+      "api_id": null,
+      "api_hash": null,
+      "phone": null,
+      "notes": ""
+    }
+  },
+  "pending_otp": {},
+  "otp_codes": {},
+  "otp_status": {}
+}
