@@ -18,7 +18,7 @@ async def add_loop():
         logger.warning("🔴 is_adding = False → exiting worker.")
         return
 
-    client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
+    client = TelegramClient(cfg["session_name"] + "_worker", cfg["api_id"], cfg["api_hash"])
     await client.connect()
 
     if not await client.is_user_authorized():
