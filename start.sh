@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
-echo "🚀 Starting Telegram Automation System (Controller + Worker)..."
+echo "🚀 Starting Telegram Automation System on Render (All-in-One Mode)..."
 set -e
 
+# Install all dependencies
 pip install -r requirements.txt
+
+# Export bot token from Render env var
 export BOT_TOKEN="${BOT_TOKEN}"
+
+# Create logs folder if not exists
 mkdir -p logs
 
-# Dummy web listener for Render
+# ✅ Start a dummy web server (so Render detects open port)
 python3 -m http.server ${PORT:-8080} >/dev/null 2>&1 &
 
-# Start controller bot in background
+# ✅ Start the controller bot in background
 echo "▶️ Starting Controller Bot..."
 nohup python3 controller_bot.py > logs/controller_bot.log 2>&1 &
 
-# Wait few seconds
+# Wait for few seconds so bot initializes
 sleep 5
 
-# Start your worker(s)
+# ✅ Start Worker 1
 echo "▶️ Starting Worker 1..."
 nohup python3 worker_adder.py worker1 > logs/worker1.log 2>&1 &
 
-# (optional) start more workers
+# (Optional) Start Worker 2 also if configured
 # echo "▶️ Starting Worker 2..."
 # nohup python3 worker_adder.py worker2 > logs/worker2.log 2>&1 &
 
-echo "✅ All services started. Check logs folder for output."
+echo "✅ All services started. Logs available inside /logs folder."
 tail -f logs/controller_bot.log
