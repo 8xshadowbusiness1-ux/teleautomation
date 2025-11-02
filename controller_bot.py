@@ -1,10 +1,13 @@
-import os, json
+import os, json, logging
 from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import logging
 
-logging.basicConfig(level=logging.INFO)
+# --- Logging setup ---
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Config file ---
 CONFIG_PATH = Path("config.json")
 
 def load_cfg():
@@ -22,7 +25,7 @@ def load_cfg():
 def save_cfg(cfg):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
-# ---------- Utility ----------
+# --- Utility ---
 def ensure_manager(uid):
     cfg = load_cfg()
     if str(uid) not in cfg["managers"]:
@@ -37,62 +40,60 @@ def ensure_manager(uid):
         save_cfg(cfg)
     return cfg
 
-# ---------- Commands ----------
+# --- Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    cfg = ensure_manager(user.id)
+    ensure_manager(user.id)
     await update.message.reply_text(
-        f"Hi {user.first_name}! Your manager id: {user.id}\n\n"
-        "Use /allcommands to see all commands with usage."
+        f"👋 Hi {user.first_name}! You're now registered as manager.\n\n"
+        "Use /allcommands to see all available commands."
     )
 
 async def allcommands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "Available commands:\n\n"
+        "📜 Available Commands:\n\n"
         "/start — Register as manager\n"
-        "/setdelay <MIN-MAX>\n"
+        "/setdelay <MIN-MAX> — e.g. /setdelay 10-15\n"
         "/setgroups <source> <target>\n"
         "/assignworker <worker>\n"
         "/startmulti <w1,w2,...>\n"
         "/startadd — Begin adding\n"
         "/stopadd — Stop adding\n"
-        "/status — Manager status\n"
+        "/status — Show status\n"
         "/addworker <name> <api_id> <api_hash>\n"
         "/setworkercred <name> <api_id> <api_hash>\n"
         "/setworkerphone <name> <phone>\n"
-        "/removeworker <name>\n"
-        "/listworkers — Show all workers\n"
-        "/checkworker <name>\n"
         "/verifyworker <name> <phone>\n"
         "/submitotp <name> <code>\n"
-        "/submit2fa <name> <password> — Submit 2-Step Verification password\n"
-        "/switchworker <name>\n"
-        "/help_safe — Show safety rules"
+        "/submit2fa <name> <password>\n"
+        "/removeworker <name>\n"
+        "/listworkers\n"
+        "/help_safe — Safety info"
     )
     await update.message.reply_text(text)
 
 async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /setdelay MIN-MAX (e.g. /setdelay 10-15)")
-        return
+        return await update.message.reply_text("Usage: /setdelay MIN-MAX (e.g. /setdelay 10-15)")
     try:
         mn, mx = map(int, context.args[0].split("-"))
         if mn <= 0 or mx < mn:
             raise ValueError
     except:
-        await update.message.reply_text("Invalid format. Example: /setdelay 10-15")
-        return
+        return await update.message.reply_text("Invalid format. Example: /setdelay 10-15")
+
     cfg = load_cfg()
     uid = str(update.effective_user.id)
+    if uid not in cfg["managers"]:
+        ensure_manager(uid)
     cfg["managers"][uid]["delay_min_minutes"] = mn
     cfg["managers"][uid]["delay_max_minutes"] = mx
     save_cfg(cfg)
-    await update.message.reply_text(f"Delay set to {mn}-{mx} minutes.")
+    await update.message.reply_text(f"✅ Delay set to {mn}-{mx} minutes.")
 
 async def setgroups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /setgroups <source> <target>")
-        return
+        return await update.message.reply_text("Usage: /setgroups <source> <target>")
     src, tgt = context.args[0], context.args[1]
     cfg = load_cfg()
     uid = str(update.effective_user.id)
@@ -103,69 +104,64 @@ async def setgroups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def assignworker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /assignworker <worker_name>")
-        return
+        return await update.message.reply_text("Usage: /assignworker <worker>")
     worker = context.args[0]
     cfg = load_cfg()
     uid = str(update.effective_user.id)
     if worker not in cfg["workers"]:
-        await update.message.reply_text("Worker not found.")
-        return
+        return await update.message.reply_text("❌ Worker not found. Use /addworker first.")
     cfg["managers"][uid]["workers"] = [worker]
     save_cfg(cfg)
-    await update.message.reply_text(f"Assigned worker `{worker}` to you.")
+    await update.message.reply_text(f"✅ Worker `{worker}` assigned to you.")
 
 async def startmulti(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /startmulti worker1,worker2")
-        return
+        return await update.message.reply_text("Usage: /startmulti worker1,worker2")
     workers = [w.strip() for w in " ".join(context.args).split(",") if w.strip()]
     cfg = load_cfg()
     uid = str(update.effective_user.id)
     missing = [w for w in workers if w not in cfg["workers"]]
     if missing:
-        await update.message.reply_text(f"Workers not found: {missing}")
-        return
+        return await update.message.reply_text(f"❌ Missing workers: {missing}")
     cfg["managers"][uid]["workers"] = workers
     cfg["managers"][uid]["active"] = True
     save_cfg(cfg)
-    await update.message.reply_text(f"Assigned {workers} and started adding.")
+    await update.message.reply_text(f"✅ Assigned workers {workers} and started adding.")
 
 async def startadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     cfg = load_cfg()
     cfg["managers"][uid]["active"] = True
     save_cfg(cfg)
-    await update.message.reply_text("✅ Started adding (active=true).")
+    await update.message.reply_text("✅ Adding started (active=true).")
 
 async def stopadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     cfg = load_cfg()
     cfg["managers"][uid]["active"] = False
     save_cfg(cfg)
-    await update.message.reply_text("🛑 Stopped adding (active=false).")
+    await update.message.reply_text("🛑 Adding stopped (active=false).")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     cfg = load_cfg()
     if uid not in cfg["managers"]:
-        await update.message.reply_text("Send /start first.")
-        return
+        return await update.message.reply_text("Send /start first.")
     m = cfg["managers"][uid]
-    txt = (
-        f"Worker(s): {m.get('workers')}\n"
+    msg = (
+        f"📊 Manager status:\n"
+        f"Workers: {m.get('workers')}\n"
         f"Delay: {m.get('delay_min_minutes')}-{m.get('delay_max_minutes')} min\n"
         f"Source: {m.get('source')}\n"
         f"Target: {m.get('target')}\n"
         f"Active: {m.get('active')}"
     )
-    await update.message.reply_text(txt)
+    await update.message.reply_text(msg)
 
-# ---------- Worker management ----------
+# --- Worker Management ---
 async def addworker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
-        await update.message.reply_text("Usage: /addworker <name> <api_id> <api_hash>")
-        return
+        return await update.message.reply_text("Usage: /addworker <name> <api_id> <api_hash>")
     name, api_id, api_hash = context.args[:3]
     cfg = load_cfg()
     cfg["workers"][name] = {
@@ -175,75 +171,79 @@ async def addworker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "phone": None,
     }
     save_cfg(cfg)
-    await update.message.reply_text(f"Worker `{name}` added successfully.")
+    await update.message.reply_text(f"✅ Worker `{name}` added successfully.")
 
 async def setworkercred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
-        await update.message.reply_text("Usage: /setworkercred <name> <api_id> <api_hash>")
-        return
+        return await update.message.reply_text("Usage: /setworkercred <name> <api_id> <api_hash>")
     name, api_id, api_hash = context.args[:3]
     cfg = load_cfg()
     if name not in cfg["workers"]:
-        await update.message.reply_text("Worker not found.")
-        return
+        return await update.message.reply_text("❌ Worker not found.")
     cfg["workers"][name]["api_id"] = api_id
     cfg["workers"][name]["api_hash"] = api_hash
     save_cfg(cfg)
-    await update.message.reply_text(f"✅ Credentials updated for {name}")
+    await update.message.reply_text(f"🔐 Credentials updated for {name}")
 
 async def setworkerphone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /setworkerphone <name> <phone>")
-        return
+        return await update.message.reply_text("Usage: /setworkerphone <name> <phone>")
     name, phone = context.args[0], context.args[1]
     cfg = load_cfg()
     if name not in cfg["workers"]:
-        await update.message.reply_text("Worker not found.")
-        return
+        return await update.message.reply_text("❌ Worker not found.")
     cfg["workers"][name]["phone"] = phone
     save_cfg(cfg)
-    await update.message.reply_text(f"📞 Phone set for {name}")
+    await update.message.reply_text(f"📱 Phone set for {name}")
 
-# ---------- OTP / 2FA ----------
+# --- OTP / 2FA ---
 async def verifyworker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /verifyworker <worker_name> <phone_number>")
-        return
+        return await update.message.reply_text("Usage: /verifyworker <worker> <phone>")
     name, phone = context.args[0], context.args[1]
     cfg = load_cfg()
     cfg["pending_otp"][name] = phone
     cfg["otp_status"][name] = "requested"
     save_cfg(cfg)
-    await update.message.reply_text(f"🔐 OTP request registered for {name}. Worker will send code.")
+    await update.message.reply_text(f"📩 OTP request registered for {name}.")
 
 async def submitotp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /submitotp <worker_name> <code>")
-        return
+        return await update.message.reply_text("Usage: /submitotp <worker> <code>")
     name, code = context.args[0], context.args[1]
     cfg = load_cfg()
     cfg["otp_codes"][name] = code
     save_cfg(cfg)
-    await update.message.reply_text(f"✅ OTP submitted for {name}. Worker will complete login if running.")
+    await update.message.reply_text(f"✅ OTP submitted for {name}.")
 
-# ✅ FIXED: 2FA PASSWORD COMMAND (proper async version)
 async def submit2fa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /submit2fa <worker_name> <password>")
-        return
+        return await update.message.reply_text("Usage: /submit2fa <worker> <password>")
     name, password = context.args[0], context.args[1]
     cfg = load_cfg()
     cfg.setdefault("otp_passwords", {})[name] = password
     save_cfg(cfg)
-    await update.message.reply_text(f"🔐 2FA password saved for {name}. Worker will auto-complete login if running.")
+    await update.message.reply_text(f"🔐 2FA password saved for {name}. Worker will auto-complete login.")
 
-# ---------- setup & run ----------
+# --- Safety Help ---
+async def help_safe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "⚠️ Privacy & Safety Rules:\n"
+        "- Users with privacy settings can't be added.\n"
+        "- Bot never sends user links or usernames.\n"
+        "- Use realistic delays to avoid Telegram bans."
+    )
+
+# --- Run Bot ---
 if __name__ == "__main__":
     BOT_TOKEN = "8254353086:AAEMim12HX44q0XYaFWpbB3J7cxm4VWprEc"
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Register all handlers
+    # disable webhook (avoid conflict)
+    import asyncio
+    asyncio.run(app.bot.delete_webhook(drop_pending_updates=True))
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("allcommands", allcommands))
     app.add_handler(CommandHandler("setdelay", setdelay))
@@ -258,6 +258,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("setworkerphone", setworkerphone))
     app.add_handler(CommandHandler("verifyworker", verifyworker))
     app.add_handler(CommandHandler("submitotp", submitotp))
-    app.add_handler(CommandHandler("submit2fa", submit2fa))  # ✅ added correctly
+    app.add_handler(CommandHandler("submit2fa", submit2fa))
+    app.add_handler(CommandHandler("help_safe", help_safe))
+
     print("✅ Controller bot started successfully! Waiting for Telegram commands...")
     app.run_polling()
