@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import os
-import json
-import asyncio
-import logging
-import httpx
-import subprocess
+import os, json, asyncio, random, logging, httpx, subprocess
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -13,7 +10,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("controller_bot")
 
 CONFIG_FILE = "bot_config.json"
-SELF_URL = "https://instaautomation-oe30.onrender.com"  # your Render URL
+SELF_URL = "https://instaautomation-oe30.onrender.com"  # change to your Render URL
 PING_INTERVAL = 300  # every 5 minutes
 
 default_config = {
@@ -29,7 +26,6 @@ default_config = {
     "logged_in": False
 }
 
-# ---------------------- CONFIG HANDLERS ----------------------
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         save_config(default_config)
@@ -42,28 +38,83 @@ def save_config(cfg):
 
 config = load_config()
 
-# ---------------------- COMMAND HANDLERS ----------------------
+# ---------------------- TELETHON LOGIN ----------------------
+client = TelegramClient(config["session_name"], config["api_id"], config["api_hash"])
+
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send OTP"""
+    try:
+        await update.message.reply_text("📲 Sending OTP to your Telegram account...")
+        await client.connect()
+
+        if await client.is_user_authorized():
+            config["logged_in"] = True
+            save_config(config)
+            return await update.message.reply_text("✅ Already logged in!")
+
+        await client.send_code_request(config["phone"])
+        await update.message.reply_text("📩 OTP sent! Use /otp <code> to verify.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ OTP send failed: {e}")
+
+async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify OTP"""
+    if not context.args:
+        return await update.message.reply_text("⚠️ Usage: /otp <code>")
+    code = context.args[0]
+    try:
+        await client.connect()
+        await client.sign_in(config["phone"], code)
+        if not await client.is_user_authorized():
+            return await update.message.reply_text("❌ Invalid or expired OTP.")
+        config["logged_in"] = True
+        save_config(config)
+        await update.message.reply_text("✅ Logged in successfully!")
+    except SessionPasswordNeededError:
+        await update.message.reply_text("🔐 2FA enabled. Use /pass <password>")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Login error: {e}")
+
+async def passwd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Two-step password"""
+    if not context.args:
+        return await update.message.reply_text("⚠️ Usage: /pass <password>")
+    password = " ".join(context.args)
+    try:
+        await client.sign_in(password=password)
+        if await client.is_user_authorized():
+            config["logged_in"] = True
+            save_config(config)
+            await update.message.reply_text("✅ 2-Step verification successful!")
+        else:
+            await update.message.reply_text("❌ Incorrect password.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Password error: {e}")
+
+# ---------------------- CONTROLLER COMMANDS ----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 *Telegram Automation Controller*\n\n"
+        "🔐 Login & Auth:\n"
         "/login - Send OTP\n"
-        "/otp <code> - Verify OTP\n"
-        "/pass <password> - Two-Step password\n"
-        "/addsource <group_id>\n"
-        "/removesource <group_id>\n"
-        "/addtarget <group_id>\n"
-        "/removetarget <group_id>\n"
+        "/otp <code> - Verify code\n"
+        "/pass <password> - 2-Step verification\n\n"
+        "⚙️ Control:\n"
+        "/addsource <group>\n"
+        "/removesource <group>\n"
+        "/addtarget <group>\n"
+        "/removetarget <group>\n"
         "/setdelay <min> <max>\n"
-        "/startadd - Begin auto adding\n"
-        "/stopadd - Stop adding\n"
-        "/status - Current status\n"
-        "/all - Full config",
+        "/startadd\n"
+        "/stopadd\n"
+        "/status\n"
+        "/all",
         parse_mode="Markdown"
     )
 
 async def add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /addsource <group_id>")
+        return await update.message.reply_text("Usage: /addsource <group>")
     gid = context.args[0]
     cfg = load_config()
     if gid not in cfg["source_groups"]:
@@ -75,7 +126,7 @@ async def add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /addtarget <group_id>")
+        return await update.message.reply_text("Usage: /addtarget <group>")
     gid = context.args[0]
     cfg = load_config()
     if gid not in cfg["target_groups"]:
@@ -87,7 +138,7 @@ async def add_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /removesource <group_id>")
+        return await update.message.reply_text("Usage: /removesource <group>")
     gid = context.args[0]
     cfg = load_config()
     if gid in cfg["source_groups"]:
@@ -99,7 +150,7 @@ async def remove_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /removetarget <group_id>")
+        return await update.message.reply_text("Usage: /removetarget <group>")
     gid = context.args[0]
     cfg = load_config()
     if gid in cfg["target_groups"]:
@@ -112,29 +163,28 @@ async def remove_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         return await update.message.reply_text("Usage: /setdelay <min> <max>")
-    try:
-        mn, mx = int(context.args[0]), int(context.args[1])
-        cfg = load_config()
-        cfg["delay_min"], cfg["delay_max"] = mn, mx
-        save_config(cfg)
-        await update.message.reply_text(f"⏱ Delay set to {mn}-{mx} sec")
-    except:
-        await update.message.reply_text("⚠ Invalid format")
+    mn, mx = map(int, context.args)
+    cfg = load_config()
+    cfg["delay_min"], cfg["delay_max"] = mn, mx
+    save_config(cfg)
+    await update.message.reply_text(f"⏱ Delay set to {mn}-{mx} sec")
 
 async def start_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
+    if not cfg["logged_in"]:
+        return await update.message.reply_text("❌ Not logged in. Use /login first.")
     if cfg["is_adding"]:
         return await update.message.reply_text("⚠ Already running.")
     cfg["is_adding"] = True
     save_config(cfg)
     subprocess.Popen(["python3", "worker_add.py"])
-    await update.message.reply_text("🟢 Started adding members in background!")
+    await update.message.reply_text("🟢 Started background adding process.")
 
 async def stop_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
     cfg["is_adding"] = False
     save_config(cfg)
-    await update.message.reply_text("🔴 Adding stopped. Worker will exit soon.")
+    await update.message.reply_text("🔴 Adding stopped.")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
@@ -143,15 +193,15 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Sources: {cfg['source_groups']}\n"
         f"Targets: {cfg['target_groups']}\n"
         f"Delay: {cfg['delay_min']}-{cfg['delay_max']} sec\n"
-        f"Adding: {'🟢 ON' if cfg['is_adding'] else '🔴 OFF'}"
+        f"Adding: {'🟢 ON' if cfg['is_adding'] else '🔴 OFF'}\n"
+        f"Logged In: {'✅' if cfg['logged_in'] else '❌'}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def all_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cfg = load_config()
-    await update.message.reply_text(json.dumps(cfg, indent=2))
+    await update.message.reply_text(json.dumps(load_config(), indent=2))
 
-# ---------------------- KEEP ALIVE ----------------------
+# ---------------------- PING ----------------------
 async def ping_loop():
     async with httpx.AsyncClient(timeout=10) as client:
         while True:
@@ -159,7 +209,7 @@ async def ping_loop():
                 r = await client.get(SELF_URL)
                 logger.info(f"🌐 Pinged {SELF_URL} | {r.status_code}")
             except Exception as e:
-                logger.warning(f"Ping failed: {e}")
+                logger.warning(f"⚠ Ping failed: {e}")
             await asyncio.sleep(PING_INTERVAL)
 
 async def on_startup(app):
@@ -170,12 +220,14 @@ async def on_startup(app):
 if __name__ == "__main__":
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN not found in env!")
+        logger.error("❌ BOT_TOKEN missing in environment!")
         exit(1)
 
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
-
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("login", login))
+    app.add_handler(CommandHandler("otp", otp))
+    app.add_handler(CommandHandler("pass", passwd))
     app.add_handler(CommandHandler("addsource", add_source))
     app.add_handler(CommandHandler("removesource", remove_source))
     app.add_handler(CommandHandler("addtarget", add_target))
@@ -186,5 +238,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("all", all_settings))
 
-    logger.info("🚀 Controller bot started successfully.")
+    logger.info("🚀 Controller bot (with login system) started.")
     app.run_polling()
