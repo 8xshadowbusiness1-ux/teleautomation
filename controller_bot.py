@@ -17,12 +17,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("controller_bot")
 
 CONFIG_FILE = "bot_config.json"
-SELF_URL = "https://instaautomation-oe30.onrender.com"  # Your Render URL
-PING_INTERVAL = 600  # every 10 minutes
+SELF_URL = "https://instaautomation-oe30.onrender.com"  # your Render URL
+PING_INTERVAL = 1800  # every 30 min (safe from 429)
 
-# ----------------------------
-# Default config
-# ----------------------------
 default_config = {
     "api_id": 22676464,
     "api_hash": "b52406ee2c61546d8b560e2d009052d3",
@@ -54,27 +51,22 @@ config = load_config()
 client = TelegramClient(config["session_name"], config["api_id"], config["api_hash"])
 
 # ----------------------------
-# Login Commands
+# Login & Verification
 # ----------------------------
 async def login_worker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send OTP for Telegram login"""
     try:
-        await update.message.reply_text("📲 Sending OTP to your Telegram account...")
         await client.connect()
-
+        await update.message.reply_text("📲 Sending OTP to your Telegram number...")
         if await client.is_user_authorized():
-            await update.message.reply_text("✅ Already logged in!")
             config["logged_in"] = True
             save_config(config)
-            return
-
+            return await update.message.reply_text("✅ Already logged in!")
         await client.send_code_request(config["phone"])
-        await update.message.reply_text("📩 OTP sent! Please enter using /otp <code>")
+        await update.message.reply_text("📩 OTP sent! Enter with /otp <code>")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error sending OTP: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def verify_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verify OTP sent to Telegram"""
     if not context.args:
         return await update.message.reply_text("⚠️ Usage: /otp <code>")
     otp = context.args[0]
@@ -82,17 +74,16 @@ async def verify_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await client.connect()
         await client.sign_in(config["phone"], otp)
         if not await client.is_user_authorized():
-            return await update.message.reply_text("❌ Invalid or expired OTP.")
+            return await update.message.reply_text("❌ Invalid OTP or expired.")
         config["logged_in"] = True
         save_config(config)
         await update.message.reply_text("✅ Logged in successfully!")
     except SessionPasswordNeededError:
-        await update.message.reply_text("🔐 2-Step Verification ON. Use /pass <password>")
+        await update.message.reply_text("🔐 2-Step Verification enabled. Use /pass <password>")
     except Exception as e:
-        await update.message.reply_text(f"❌ OTP error: {e}")
+        await update.message.reply_text(f"❌ OTP Error: {e}")
 
 async def verify_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle two-step verification password"""
     if not context.args:
         return await update.message.reply_text("⚠️ Usage: /pass <your_password>")
     password = " ".join(context.args)
@@ -101,31 +92,31 @@ async def verify_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await client.is_user_authorized():
             config["logged_in"] = True
             save_config(config)
-            await update.message.reply_text("✅ 2-Step verification successful! Logged in.")
+            await update.message.reply_text("✅ 2-Step Verification successful!")
         else:
-            await update.message.reply_text("❌ Password incorrect.")
+            await update.message.reply_text("❌ Wrong password.")
     except Exception as e:
-        await update.message.reply_text(f"❌ Password error: {e}")
+        await update.message.reply_text(f"❌ Password Error: {e}")
 
 # ----------------------------
-# Controller Commands
+# Command Functions
 # ----------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Telegram Automation Controller Online!\n\n"
-        "Commands:\n"
-        "/login - Send OTP to your Telegram number\n"
-        "/otp <code> - Verify OTP\n"
-        "/pass <password> - Two-Step Verification password\n"
-        "/addsource <group>\n"
-        "/removesource <group>\n"
-        "/addtarget <group>\n"
-        "/removetarget <group>\n"
-        "/setdelay <min> <max>\n"
-        "/startadd\n"
-        "/stopadd\n"
-        "/status\n"
-        "/all"
+        "🤖 Telegram Automation Controller\n\n"
+        "🧩 Login Commands:\n"
+        "/login → Send OTP\n"
+        "/otp <code> → Verify OTP\n"
+        "/pass <password> → 2FA password\n\n"
+        "🎯 Group Controls:\n"
+        "/addsource <group>\n/removesource <group>\n"
+        "/addtarget <group>\n/removetarget <group>\n"
+        "/setdelay <min> <max>\n\n"
+        "⚙️ Controls:\n"
+        "/startadd → Start adding\n"
+        "/stopadd → Stop adding\n"
+        "/status → Check status\n"
+        "/all → Full config"
     )
 
 async def add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -188,7 +179,30 @@ async def set_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_config(cfg)
         await update.message.reply_text(f"⏱️ Delay set: {mn}-{mx} sec")
     except:
-        await update.message.reply_text("⚠️ Invalid format")
+        await update.message.reply_text("⚠️ Invalid input.")
+
+async def start_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cfg = load_config()
+    cfg["is_adding"] = True
+    save_config(cfg)
+    await update.message.reply_text("✅ Member adding started!")
+    asyncio.create_task(run_adding_loop(update))
+
+async def stop_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cfg = load_config()
+    cfg["is_adding"] = False
+    save_config(cfg)
+    await update.message.reply_text("🛑 Member adding stopped!")
+
+async def run_adding_loop(update: Update):
+    """Dummy simulation of adding process (for debug)"""
+    await update.message.reply_text("⚙️ Simulating member adding... (loop)")
+    while load_config().get("is_adding"):
+        delay = random.randint(config["delay_min"], config["delay_max"])
+        logger.info(f"⏳ Waiting {delay}s before next add...")
+        await asyncio.sleep(delay)
+        # future: perform Telethon add-member action here
+    logger.info("🔴 Adding loop stopped.")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
@@ -205,7 +219,7 @@ async def all_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(json.dumps(cfg, indent=2))
 
 # ----------------------------
-# Ping (keep alive)
+# Ping Keep Alive
 # ----------------------------
 async def ping_loop():
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -219,10 +233,10 @@ async def ping_loop():
 
 async def on_startup(app):
     asyncio.create_task(ping_loop())
-    logger.info("✅ Ping task started every 10 min → %s", SELF_URL)
+    logger.info("✅ Ping loop active every 30 min.")
 
 # ----------------------------
-# Start Bot
+# Run Application
 # ----------------------------
 if __name__ == "__main__":
     BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -232,17 +246,24 @@ if __name__ == "__main__":
 
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
 
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("login", login_worker))
-    app.add_handler(CommandHandler("otp", verify_otp))
-    app.add_handler(CommandHandler("pass", verify_password))
-    app.add_handler(CommandHandler("addsource", add_source))
-    app.add_handler(CommandHandler("removesource", remove_source))
-    app.add_handler(CommandHandler("addtarget", add_target))
-    app.add_handler(CommandHandler("removetarget", remove_target))
-    app.add_handler(CommandHandler("setdelay", set_delay))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("all", all_settings))
+    handlers = {
+        "start": start_cmd,
+        "login": login_worker,
+        "otp": verify_otp,
+        "pass": verify_password,
+        "addsource": add_source,
+        "removesource": remove_source,
+        "addtarget": add_target,
+        "removetarget": remove_target,
+        "setdelay": set_delay,
+        "startadd": start_add,
+        "stopadd": stop_add,
+        "status": status,
+        "all": all_settings,
+    }
 
-    logger.info("🚀 Controller Bot (Login + Worker + Ping) started.")
+    for cmd, func in handlers.items():
+        app.add_handler(CommandHandler(cmd, func))
+
+    logger.info("🚀 Controller Bot (Login + Add + Ping) started.")
     app.run_polling()
