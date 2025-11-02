@@ -18,9 +18,22 @@ async def add_loop():
         logger.warning("🔴 is_adding = False → exiting worker.")
         return
 
+    # Use unique worker session
     client = TelegramClient(cfg["session_name"] + "_worker", cfg["api_id"], cfg["api_hash"])
-    await client.connect()
 
+    # Retry connection 3 times
+    for i in range(3):
+        try:
+            await client.connect()
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Retry {i+1}/3 connect failed: {e}")
+            await asyncio.sleep(3)
+    else:
+        logger.error("❌ Could not connect after 3 retries.")
+        return
+
+    # Check login
     if not await client.is_user_authorized():
         logger.error("❌ Worker not logged in! Use /login in main bot.")
         return
@@ -65,6 +78,7 @@ async def add_loop():
 
     except Exception as e:
         logger.error(f"❌ Worker crashed: {e}")
+
     finally:
         await client.disconnect()
         logger.info("🔴 Worker stopped gracefully.")
