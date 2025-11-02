@@ -1,15 +1,10 @@
-# --- Telegram controller bot ---
 python-telegram-bot==20.3
-
-# --- Telegram user automation (workers) ---
 telethon==1.33.1
-
-# --- Optional: used by both scripts for async, JSON, and file management ---
-aiofiles>=23.2.1
-pytz>=2024.1
-
-# --- Logging and system utils ---
-colorama>=0.4.6
-
-# --- (Optional but helpful) environment variable loader ---
-python-dotenv>=1.0.1
+aiofiles
+pytz
+colorama
+python-dotenv
+httpx
+rsa
+pyaes
+nest_asyncio
