@@ -3,6 +3,18 @@ import asyncio, json, random, os, sys, time
 from pathlib import Path
 from telethon import TelegramClient, errors
 from telethon.tl.functions.channels import InviteToChannelRequest
+# --- ensure config file exists ---
+CONFIG_PATH = Path("config.json")
+
+# Auto-create config file if missing (so worker never crashes)
+if not CONFIG_PATH.exists():
+    CONFIG_PATH.write_text(json.dumps({
+        "workers": {},
+        "managers": {},
+        "pending_otp": {},
+        "otp_codes": {},
+        "otp_status": {}
+    }, indent=2))
 
 CONFIG_PATH = Path("config.json")
 
