@@ -346,13 +346,12 @@ async def help_safe(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- setup & run ----------
 if __name__ == "__main__":
-    BOT_TOKEN = os.environ.get("BOT_TOKEN")
-    if not BOT_TOKEN:
-        print("Set BOT_TOKEN env var before running.")
-        exit(1)
+    # 👇 Example token (for demonstration only)
+    BOT_TOKEN = "8254353086:AAEMim12HX44q0XYaFWpbB3J7cxm4VWprEc"
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # register handlers
+    # Register handlers (same as above)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("allcommands", allcommands))
     app.add_handler(CommandHandler("setdelay", setdelay))
@@ -373,5 +372,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("switchworker", switchworker))
     app.add_handler(CommandHandler("help_safe", help_safe))
 
-    print("Controller bot started.")
+    print("✅ Controller bot started successfully! Waiting for Telegram messages...")
     app.run_polling()
