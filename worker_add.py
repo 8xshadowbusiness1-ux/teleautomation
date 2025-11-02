@@ -12,15 +12,14 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
+
 async def add_loop():
     cfg = load_config()
     if not cfg.get("is_adding"):
         logger.warning("🔴 is_adding = False → exiting worker.")
         return
 
-    session_name = cfg.get("session_name", "worker_main")
-    session_path = f"{session_name}.session"  # same as controller
-
+    session_path = f"{cfg['session_name']}.session"
     client = TelegramClient(session_path, cfg["api_id"], cfg["api_hash"])
 
     for i in range(3):
@@ -34,25 +33,9 @@ async def add_loop():
         logger.error("❌ Could not connect after 3 retries.")
         return
 
-    # ✅ Check login
     if not await client.is_user_authorized():
-        phone = cfg.get("phone")
-        if not phone:
-            logger.error("📵 No phone number in config.json")
-            return
-
-        logger.info("📲 Sending login code...")
-        try:
-            await client.send_code_request(phone)
-            logger.warning("⚠️ Please enter OTP in Telegram bot using /otp <code>")
-            await asyncio.sleep(45)
-        except Exception as e:
-            logger.error(f"❌ OTP send failed: {e}")
-            return
-
-        if not await client.is_user_authorized():
-            logger.error("❌ Worker still not logged in! Run /login + /otp again.")
-            return
+        logger.error("❌ Worker not logged in! Use /login + /otp again.")
+        return
 
     await client.start()
     logger.info("🟢 Worker fully logged in and active!")
@@ -69,14 +52,24 @@ async def add_loop():
                 continue
 
             for src in sources:
-                # ✅ FIXED: Properly await coroutine result
-                participants = await client.get_participants(src, aggressive=True)
+                try:
+                    src_entity = await client.get_entity(int(src))
+                    participants = await client.get_participants(src_entity)
+                except Exception as e:
+                    logger.error(f"⚠️ Failed to fetch source {src}: {e}")
+                    continue
 
                 for user in participants:
                     for tgt in targets:
                         try:
+                            # ✅ Handle both @username or ID
+                            if str(tgt).startswith("-100"):
+                                entity = await client.get_entity(int(tgt))
+                            else:
+                                entity = await client.get_entity(tgt)
+
                             await client(functions.channels.InviteToChannelRequest(
-                                channel=tgt,
+                                channel=entity,
                                 users=[user.id]
                             ))
                             logger.info(f"✅ Added {user.first_name} to {tgt}")
@@ -94,13 +87,14 @@ async def add_loop():
                         logger.info(f"⏳ Waiting {delay}s before next add...")
                         await asyncio.sleep(delay)
 
-            logger.info("♻️ Cycle done, checking again...")
+            logger.info("♻️ Loop complete, checking again...")
 
     except Exception as e:
         logger.error(f"❌ Worker crashed: {e}")
     finally:
         await client.disconnect()
         logger.info("🔴 Worker stopped gracefully.")
+
 
 if __name__ == "__main__":
     asyncio.run(add_loop())
