@@ -1,8 +1,8 @@
 {
   "is_adding": false,
   "logged_in": false,
-  "source_groups": ["-1003192094585"],
-  "target_groups": ["-1003219996695"],
+  "source_groups": ["-1002647054427"],
+  "target_groups": ["-1001823169797"],
   "delay_min": 10,
   "delay_max": 20,
   "session_name": "worker_main",
