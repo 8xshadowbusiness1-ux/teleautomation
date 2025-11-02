@@ -24,3 +24,9 @@ sleep 4
 nohup python3 worker_launcher.py > logs/worker_launcher.log 2>&1 &
 
 tail -f logs/controller_bot.log logs/worker_launcher.log
+#!/bin/bash
+echo "🚀 Starting Telegram Automation System (Controller + Worker)"
+python3 controller_bot.py &
+sleep 10
+python3 worker_launcher.py
+
