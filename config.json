@@ -12,8 +12,8 @@
   "workers": {
     "worker1": {
       "session_name": "worker1_session",
-      "api_id": "1234567",
-      "api_hash": "abcdef1234567890abcdef1234567890",
+      "api_id": "20339511",
+      "api_hash": "400346de83fffd1ef3da5bbaab999d4c",
       "phone": "+91XXXXXXXXXX",
       "notes": "Main worker for automation"
     },
