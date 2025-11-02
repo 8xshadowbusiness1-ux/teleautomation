@@ -1,7 +1,11 @@
-import os, json, logging
+import os, json, logging, asyncio
 from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+# --- Optional: Prevent asyncio loop issues on Render ---
+import nest_asyncio
+nest_asyncio.apply()
 
 # --- Logging setup ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -235,14 +239,11 @@ async def help_safe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # --- Run Bot ---
-if __name__ == "__main__":
-    BOT_TOKEN = "8254353086:AAEMim12HX44q0XYaFWpbB3J7cxm4VWprEc"
+BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8254353086:AAEMim12HX44q0XYaFWpbB3J7cxm4VWprEc"
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # disable webhook (avoid conflict)
-    import asyncio
-    asyncio.run(app.bot.delete_webhook(drop_pending_updates=True))
+async def main():
+    await app.bot.delete_webhook(drop_pending_updates=True)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("allcommands", allcommands))
@@ -262,4 +263,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("help_safe", help_safe))
 
     print("✅ Controller bot started successfully! Waiting for Telegram commands...")
-    app.run_polling()
+    await app.run_polling(close_loop=False)
+
+if __name__ == "__main__":
+    asyncio.run(main())
