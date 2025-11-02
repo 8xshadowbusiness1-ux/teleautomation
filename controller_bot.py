@@ -26,7 +26,7 @@ PING_INTERVAL = 600  # every 10 minutes
 default_config = {
     "api_id": 20339511,
     "api_hash": "400346de83fffd1ef3da5bbaab999d4c",
-    "phone": "+91XXXXXXXXXX",
+    "phone": "+919158759397",
     "session_name": "worker_main",
     "source_groups": [],
     "target_groups": [],
