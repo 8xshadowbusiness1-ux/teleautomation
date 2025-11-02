@@ -374,3 +374,15 @@ if __name__ == "__main__":
 
     print("✅ Controller bot started successfully! Waiting for Telegram messages...")
     app.run_polling()
+    @bot.message_handler(commands=['submit2fa'])
+def submit_2fa(message):
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        bot.reply_to(message, "Usage: /submit2fa <worker_name> <password>")
+        return
+    worker, password = parts[1], parts[2]
+    cfg = load_cfg()
+    cfg.setdefault("otp_passwords", {})[worker] = password
+    save_cfg(cfg)
+    bot.reply_to(message, f"🔐 2FA password saved for {worker}. Worker will auto-complete login if running.")
+
