@@ -85,7 +85,7 @@ async def worker_loop(worker_name):
                 phone = cfg.get("pending_otp", {}).get(worker_name) or phone_from_cfg
                 if phone:
                     try:
-                        print(f"[{worker_name}] Trying sign_in with code.")
+                        print(f"[{worker_name}] Trying sign_in with code (will not store code).")
                         await client.sign_in(phone, code)
                         print(f"[{worker_name}] Sign-in successful. Session saved.")
                         cfg.get("otp_codes", {}).pop(worker_name, None)
@@ -103,19 +103,21 @@ async def worker_loop(worker_name):
                         cfg.get("otp_codes", {}).pop(worker_name, None)
                         save_cfg(cfg)
 
-            # --- 2FA Password Handling ---
+            # --- handle 2FA password ---
             otp_passwords = cfg.get("otp_passwords", {})
             if worker_name in otp_passwords:
-                password = otp_passwords[worker_name]
                 try:
-                    print(f"[{worker_name}] Attempting 2FA login...")
+                    password = otp_passwords[worker_name]
+                    print(f"[{worker_name}] Attempting 2FA password login...")
                     await client.sign_in(password=password)
                     print(f"[{worker_name}] 2FA login successful!")
+                    cfg = load_cfg()
                     cfg.get("otp_passwords", {}).pop(worker_name, None)
                     cfg.setdefault("otp_status", {})[worker_name] = "verified"
                     save_cfg(cfg)
                 except Exception as e:
                     print(f"[{worker_name}] 2FA login failed: {e}")
+                    cfg = load_cfg()
                     cfg.setdefault("otp_status", {})[worker_name] = f"2fa_error:{e}"
                     save_cfg(cfg)
 
