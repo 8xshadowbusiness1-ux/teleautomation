@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import asyncio, json, random, logging, time, os
 from telethon import TelegramClient, errors
 from telethon.tl.functions.channels import InviteToChannelRequest
@@ -9,7 +10,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("worker")
 
 def load_config():
-    """Load config safely from file"""
     try:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
@@ -18,7 +18,6 @@ def load_config():
         return {}
 
 async def keep_alive_session(client):
-    """Heartbeat to keep session alive"""
     while True:
         try:
             await client.get_me()
@@ -28,7 +27,6 @@ async def keep_alive_session(client):
         await asyncio.sleep(300)
 
 async def safe_get_entity(client, group_id):
-    """Fetch channel entity safely with retry"""
     try:
         return await client.get_entity(PeerChannel(int(group_id)))
     except Exception:
@@ -42,31 +40,31 @@ async def safe_get_entity(client, group_id):
 
 async def worker():
     cfg = load_config()
-    client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
+    client = TelegramClient(cfg["session_name"] + "_worker", cfg["api_id"], cfg["api_hash"])
     await client.connect()
 
     if not await client.is_user_authorized():
-        try:
-            await client.sign_in(phone=cfg["phone"])
-        except Exception as e:
-            logger.error(f"❌ Login repair failed: {e}")
-            return
+        logger.error("⚠️ Not logged in. Login via controller first.")
+        await client.disconnect()
+        return
 
     logger.info("🟢 Worker connected successfully.")
     asyncio.create_task(keep_alive_session(client))
 
+    adaptive_multiplier = 1.0
+    last_flood = 0
+
     while True:
-        cfg = load_config()  # 🔁 Live reload each loop
+        cfg = load_config()
         if not cfg.get("is_adding", False):
             logger.info("🔴 Stop flag detected. Worker halting.")
             break
 
         sources = cfg.get("source_groups", [])
         targets = cfg.get("target_groups", [])
-        dmin = int(cfg.get("delay_min", 15))
-        dmax = int(cfg.get("delay_max", 30))
-
-        logger.info(f"⚙️ Current delay range: {dmin}-{dmax}s | Sources: {len(sources)} | Targets: {len(targets)}")
+        dmin = int(cfg.get("delay_min", 30) * adaptive_multiplier)
+        dmax = int(cfg.get("delay_max", 60) * adaptive_multiplier)
+        logger.info(f"⚙️ Delay range: {dmin}-{dmax}s | Adaptive: x{adaptive_multiplier:.2f}")
 
         for src in sources:
             source = await safe_get_entity(client, src)
@@ -75,16 +73,17 @@ async def worker():
 
             try:
                 participants = await client.get_participants(source)
-            except Exception as e:
-                logger.warning(f"⚠️ Participant fetch failed ({src}): {e}")
+            except errors.FloodWaitError as e:
+                logger.warning(f"🚫 Flood wait {e.seconds}s on get_participants")
+                adaptive_multiplier = min(adaptive_multiplier * 1.5, 6.0)
+                await asyncio.sleep(e.seconds)
                 continue
 
             for user in participants:
                 for tgt in targets:
                     try:
                         target = await safe_get_entity(client, tgt)
-                        if not target:
-                            continue
+                        if not target: continue
 
                         await client(InviteToChannelRequest(target, [user]))
                         delay = random.randint(dmin, dmax)
@@ -92,19 +91,23 @@ async def worker():
                         await asyncio.sleep(delay)
 
                     except errors.FloodWaitError as e:
-                        logger.warning(f"🚫 Flood wait {e.seconds}s – pausing.")
-                        await asyncio.sleep(e.seconds + 10)
+                        logger.warning(f"🚫 Flood wait {e.seconds}s — pausing & adapting")
+                        adaptive_multiplier = min(adaptive_multiplier * 1.5, 5.0)
+                        last_flood = time.time()
+                        await asyncio.sleep(e.seconds)
                     except errors.UserPrivacyRestrictedError:
-                        logger.warning(f"⚠️ Skipped {user.id}: privacy restricted.")
+                        logger.warning(f"⚠️ Skipped {user.id} (privacy)")
                         await asyncio.sleep(3)
                     except errors.UserAlreadyParticipantError:
-                        logger.info(f"ℹ️ {user.id} already in group.")
                         await asyncio.sleep(2)
                     except Exception as e:
                         logger.warning(f"⚠️ Add error: {e}")
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(3)
 
-        await asyncio.sleep(10)
+        # Recovery: if no flood for 10 min, slowly decrease adaptive multiplier
+        if time.time() - last_flood > 600 and adaptive_multiplier > 1.0:
+            adaptive_multiplier = max(1.0, adaptive_multiplier * 0.9)
+        await asyncio.sleep(5)
 
     await client.disconnect()
     logger.info("🛑 Worker stopped cleanly.")
