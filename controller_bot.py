@@ -271,3 +271,20 @@ if __name__ == "__main__":
     logger.info("🚀 Controller bot (with full login system) started.")
     asyncio.get_event_loop().create_task(keep_alive())
     app.run_polling()
+    async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change add delay dynamically"""
+    if len(context.args) != 2:
+        return await update.message.reply_text("⚠️ Usage: /setdelay <min> <max>")
+
+    try:
+        min_delay = int(context.args[0])
+        max_delay = int(context.args[1])
+    except ValueError:
+        return await update.message.reply_text("⚠️ Enter numbers only!")
+
+    cfg = load_config()
+    cfg["delay_min"] = min_delay
+    cfg["delay_max"] = max_delay
+    save_config(cfg)
+    await update.message.reply_text(f"✅ Delay updated: {min_delay}–{max_delay} sec")
+
