@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
-import asyncio
-import json
-import logging
-import nest_asyncio
-import os
-import httpx
-import time
+import asyncio, json, logging, nest_asyncio, os, httpx
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telethon import TelegramClient, errors
 
-# ------------------ LOGGING ------------------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("controller")
 
 CONFIG_PATH = "bot_config.json"
 PROGRESS_PATH = "progress.json"
-PING_URL = "https://teleautomation-zkhq.onrender.com"  # apna Render URL daalna
+PING_URL = "https://teleautomation-zkhq.onrender.com"  # ✅ apna latest Render URL
 
-# ------------------ CONFIG ------------------
 def load_config():
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
@@ -27,7 +19,7 @@ def save_config(data):
     with open(CONFIG_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
-# ------------------ LOGIN SYSTEM ------------------
+# ------------------ LOGIN ------------------
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
     client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
@@ -38,9 +30,9 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Already logged in.")
             await client.disconnect()
             return
-
-        await client.send_code_request(cfg["phone"])
-        await update.message.reply_text("📲 OTP sent! Use /otp <code>")
+        phone = cfg["phone"]
+        await client.send_code_request(phone)
+        await update.message.reply_text("📱 OTP sent! Use /otp <code>")
         cfg["otp_pending"] = True
         save_config(cfg)
     except Exception as e:
@@ -56,6 +48,7 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
     client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
     await client.connect()
+
     try:
         await client.sign_in(phone=cfg["phone"], code=code)
         cfg["logged_in"] = True
@@ -72,10 +65,12 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def twofa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         return await update.message.reply_text("⚠️ Usage: /2fa <password>")
+
     password = " ".join(context.args)
     cfg = load_config()
     client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
     await client.connect()
+
     try:
         await client.sign_in(password=password)
         cfg["logged_in"] = True
@@ -86,26 +81,25 @@ async def twofa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await client.disconnect()
 
-# ------------------ WORKER STATUS ------------------
+# ------------------ STATUS ------------------
 async def workerstatus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists(PROGRESS_PATH):
-        return await update.message.reply_text("⚠️ No progress data found or worker not running.")
-
+        return await update.message.reply_text("⚠️ Worker not active or no data found.")
     try:
         data = json.load(open(PROGRESS_PATH))
         msg = (
-            f"📊 **Worker Status:**\n"
-            f"📤 Source: {data.get('source', 'N/A')}\n"
-            f"📥 Target: {data.get('target', 'N/A')}\n"
+            f"📊 Worker Status:\n"
+            f"Source: {data.get('source')}\n"
+            f"Target: {data.get('target')}\n"
             f"✅ Added: {data.get('added', 0)} members\n"
-            f"⏱ Delay: {data.get('delay_min', '?')}–{data.get('delay_max', '?')} sec\n"
-            f"💓 Uptime: {data.get('uptime', '?')}\n"
+            f"⏱ Delay: {data.get('delay_min')}–{data.get('delay_max')}s\n"
+            f"💓 Uptime: {data.get('uptime', '?')}"
         )
         await update.message.reply_text(msg)
     except Exception as e:
         await update.message.reply_text(f"❌ Error reading progress: {e}")
 
-# ------------------ KEEP ALIVE ------------------
+# ------------------ PING ------------------
 async def keep_alive():
     while True:
         try:
@@ -114,14 +108,14 @@ async def keep_alive():
                 logger.info(f"💓 Ping {PING_URL} | {r.status_code}")
         except Exception as e:
             logger.warning(f"Ping failed: {e}")
-        await asyncio.sleep(600)  # every 10 minutes
+        await asyncio.sleep(600)
 
 # ------------------ MAIN ------------------
-async def main():
+if __name__ == "__main__":
     nest_asyncio.apply()
     token = os.getenv("BOT_TOKEN")
     if not token:
-        raise SystemExit("❌ BOT_TOKEN missing in environment!")
+        raise SystemExit("❌ BOT_TOKEN missing in environment variables!")
 
     app = ApplicationBuilder().token(token).build()
 
@@ -130,13 +124,6 @@ async def main():
     app.add_handler(CommandHandler("2fa", twofa))
     app.add_handler(CommandHandler("workerstatus", workerstatus))
 
+    asyncio.get_event_loop().create_task(keep_alive())
     logger.info("🚀 Controller bot started successfully.")
-    asyncio.create_task(keep_alive())
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    app.run_polling()
