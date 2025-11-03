@@ -16,7 +16,7 @@ logger = logging.getLogger("controller")
 
 CONFIG_PATH = "bot_config.json"
 PROGRESS_PATH = "progress.json"
-PING_URL = "https://teleautomation-by9o.onrender.com"  # apna Render URL daalna
+PING_URL = "https://teleautomation-zkhq.onrender.com"  # apna Render URL daalna
 
 # ------------------ CONFIG ------------------
 def load_config():
