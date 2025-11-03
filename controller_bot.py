@@ -143,6 +143,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/removetarget <group_id>\n"
         "/startadd – start adding members\n"
         "/stopadd – stop adding\n"
+        "/setdelay <min> <max> – change add delay"
     )
 
 
@@ -152,7 +153,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔐 Logged In: {'✅' if cfg.get('logged_in') else '❌'}\n"
         f"⚙️ Adding: {'✅' if cfg.get('is_adding') else '❌'}\n"
         f"📤 Sources: {cfg.get('source_groups', [])}\n"
-        f"📥 Targets: {cfg.get('target_groups', [])}"
+        f"📥 Targets: {cfg.get('target_groups', [])}\n"
+        f"⏱ Delay: {cfg.get('delay_min', 15)}–{cfg.get('delay_max', 30)} sec"
     )
     await update.message.reply_text(msg)
 
@@ -207,6 +209,24 @@ async def removetarget(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🗑️ Removed target: {tgt}")
     else:
         await update.message.reply_text("⚠️ Target not found!")
+
+
+async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change add delay dynamically"""
+    if len(context.args) != 2:
+        return await update.message.reply_text("⚠️ Usage: /setdelay <min> <max>")
+
+    try:
+        min_delay = int(context.args[0])
+        max_delay = int(context.args[1])
+    except ValueError:
+        return await update.message.reply_text("⚠️ Enter numbers only!")
+
+    cfg = load_config()
+    cfg["delay_min"] = min_delay
+    cfg["delay_max"] = max_delay
+    save_config(cfg)
+    await update.message.reply_text(f"✅ Delay updated: {min_delay}–{max_delay} sec")
 
 
 async def startadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -265,26 +285,10 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("addtarget", addtarget))
     app.add_handler(CommandHandler("removesource", removesource))
     app.add_handler(CommandHandler("removetarget", removetarget))
+    app.add_handler(CommandHandler("setdelay", setdelay))
     app.add_handler(CommandHandler("startadd", startadd))
     app.add_handler(CommandHandler("stopadd", stopadd))
 
-    logger.info("🚀 Controller bot (with full login system) started.")
+    logger.info("🚀 Controller bot (with login system) started.")
     asyncio.get_event_loop().create_task(keep_alive())
     app.run_polling()
-    async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Change add delay dynamically"""
-    if len(context.args) != 2:
-        return await update.message.reply_text("⚠️ Usage: /setdelay <min> <max>")
-
-    try:
-        min_delay = int(context.args[0])
-        max_delay = int(context.args[1])
-    except ValueError:
-        return await update.message.reply_text("⚠️ Enter numbers only!")
-
-    cfg = load_config()
-    cfg["delay_min"] = min_delay
-    cfg["delay_max"] = max_delay
-    save_config(cfg)
-    await update.message.reply_text(f"✅ Delay updated: {min_delay}–{max_delay} sec")
-
