@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-import asyncio, json, random, logging, os
+import os, json, asyncio, random, logging
 from telethon import TelegramClient, errors
-from telethon.tl import functions
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
-logger = logging.getLogger("worker_add")
+logger = logging.getLogger("worker")
 
 CONFIG_FILE = "bot_config.json"
 
@@ -12,89 +12,82 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
+def save_config(cfg):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
 
-async def add_loop():
+async def keep_session_alive(client):
+    """Keeps session active to prevent auto logout"""
+    while True:
+        try:
+            await client.get_me()
+            logger.info("💓 Session heartbeat sent.")
+        except Exception as e:
+            logger.warning(f"⚠️ Heartbeat failed: {e}")
+        await asyncio.sleep(600)  # every 10 min
+
+async def start_worker():
     cfg = load_config()
-    if not cfg.get("is_adding"):
-        logger.warning("🔴 is_adding = False → exiting worker.")
-        return
+    client = TelegramClient(cfg["session_name"], cfg["api_id"], cfg["api_hash"])
 
-    session_path = f"{cfg['session_name']}.session"
-    client = TelegramClient(session_path, cfg["api_id"], cfg["api_hash"])
-
-    for i in range(3):
+    # 🔁 Auto reconnect logic
+    for i in range(5):
         try:
             await client.connect()
+            if not await client.is_user_authorized():
+                logger.warning("⚠️ Session not authorized — trying to resume login")
+                await client.start(phone=cfg["phone"])
+            logger.info("🟢 Worker connected successfully.")
             break
         except Exception as e:
-            logger.warning(f"⚠️ Retry {i+1}/3 connect failed: {e}")
-            await asyncio.sleep(3)
+            logger.warning(f"⚠️ Retry {i+1}/5 connect failed: {e}")
+            await asyncio.sleep(5)
     else:
-        logger.error("❌ Could not connect after 3 retries.")
+        logger.error("❌ Could not connect after 5 retries.")
         return
 
-    if not await client.is_user_authorized():
-        logger.error("❌ Worker not logged in! Use /login + /otp again.")
-        return
-
-    await client.start()
-    logger.info("🟢 Worker fully logged in and active!")
+    asyncio.create_task(keep_session_alive(client))
+    logger.info("🚀 Worker started and session keep-alive active.")
 
     try:
-        while load_config().get("is_adding"):
+        while cfg.get("is_adding"):
             cfg = load_config()
-            sources = cfg.get("source_groups", [])
-            targets = cfg.get("target_groups", [])
+            delay_min = cfg.get("delay_min", 15)
+            delay_max = cfg.get("delay_max", 30)
+            delay = random.randint(delay_min, delay_max)
 
-            if not sources or not targets:
-                logger.warning("⚠️ No source/target groups set.")
-                await asyncio.sleep(10)
+            if not cfg["source_groups"] or not cfg["target_groups"]:
+                logger.warning("⚠️ Source or target list empty. Waiting...")
+                await asyncio.sleep(30)
                 continue
 
-            for src in sources:
-                try:
-                    src_entity = await client.get_entity(int(src))
-                    participants = await client.get_participants(src_entity)
-                except Exception as e:
-                    logger.error(f"⚠️ Failed to fetch source {src}: {e}")
-                    continue
+            src = random.choice(cfg["source_groups"])
+            tgt = random.choice(cfg["target_groups"])
 
-                for user in participants:
-                    for tgt in targets:
-                        try:
-                            # ✅ Handle both @username or ID
-                            if str(tgt).startswith("-100"):
-                                entity = await client.get_entity(int(tgt))
-                            else:
-                                entity = await client.get_entity(tgt)
+            try:
+                members = await client.get_participants(src, limit=5)
+                for user in members:
+                    if not cfg.get("is_adding"):
+                        break
 
-                            await client(functions.channels.InviteToChannelRequest(
-                                channel=entity,
-                                users=[user.id]
-                            ))
-                            logger.info(f"✅ Added {user.first_name} to {tgt}")
-                        except errors.UserPrivacyRestrictedError:
-                            logger.warning(f"🚫 Privacy restricted: {user.first_name}")
-                        except errors.FloodWaitError as e:
-                            logger.warning(f"⏳ Flood wait {e.seconds}s")
-                            await asyncio.sleep(e.seconds + 5)
-                        except errors.UserAlreadyParticipantError:
-                            logger.info(f"⚠️ Already in target: {user.first_name}")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Failed to add {user.id}: {e}")
-
-                        delay = random.randint(cfg["delay_min"], cfg["delay_max"])
-                        logger.info(f"⏳ Waiting {delay}s before next add...")
+                    try:
+                        await client.add_participant(tgt, user)
+                        logger.info(f"✅ Added {user.id} → {tgt}")
                         await asyncio.sleep(delay)
+                    except errors.FloodWaitError as e:
+                        logger.warning(f"🚫 Floodwait: sleeping {e.seconds}s")
+                        await asyncio.sleep(e.seconds + 5)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Add error: {e}")
 
-            logger.info("♻️ Loop complete, checking again...")
+            except Exception as e:
+                logger.error(f"❌ Source fetch error: {e}")
+                await asyncio.sleep(30)
 
-    except Exception as e:
-        logger.error(f"❌ Worker crashed: {e}")
+        logger.info("🛑 Adding stopped manually.")
     finally:
         await client.disconnect()
         logger.info("🔴 Worker stopped gracefully.")
 
-
 if __name__ == "__main__":
-    asyncio.run(add_loop())
+    asyncio.run(start_worker())
