@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 CONFIG_FILE = "bot_config.json"
-PING_URL = "https://teleautomation-1vnh.onrender.com"  # Replace with your Render URL
+PING_URL = "https://teleautomation-by9o.onrender.com"  # Replace with your Render URL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("controller")
